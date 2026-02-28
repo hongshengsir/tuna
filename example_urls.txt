@@ -1,0 +1,11 @@
+# 微信文章URL示例文件
+# 每行一个URL，以#开头的行会被忽略
+
+# 示例URL 1
+https://mp.weixin.qq.com/s/example_article_1
+
+# 示例URL 2  
+https://mp.weixin.qq.com/s/example_article_2
+
+# 示例URL 3
+https://mp.weixin.qq.com/s/example_article_3
