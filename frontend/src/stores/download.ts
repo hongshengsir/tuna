@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+// API配置
+const API_BASE_URL = 'http://localhost:5000/api'
+
 export interface DownloadTask {
   id: string
   url: string
@@ -10,12 +13,35 @@ export interface DownloadTask {
   fileName?: string
   startTime?: Date
   endTime?: Date
+  apiTaskId?: string // 后端API任务ID
 }
 
 export const useDownloadStore = defineStore('download', () => {
   const tasks = ref<DownloadTask[]>([])
   const isBatchDownloading = ref(false)
   const batchProgress = ref(0)
+
+  // API调用函数
+  const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      return await response.json()
+    } catch (error) {
+      console.error('API请求失败:', error)
+      throw error
+    }
+  }
 
   const addTask = (url: string) => {
     const task: DownloadTask = {
@@ -87,6 +113,125 @@ export const useDownloadStore = defineStore('download', () => {
     return tasks.value.filter(task => task.status === 'error')
   }
 
+  // 调用后端API下载单个文章
+  const downloadSingleArticle = async (taskId: string) => {
+    const task = tasks.value.find(t => t.id === taskId)
+    if (!task) {
+      throw new Error('任务不存在')
+    }
+
+    try {
+      // 调用后端API
+      const response = await apiRequest('/download/single', {
+        method: 'POST',
+        body: JSON.stringify({ url: task.url })
+      })
+
+      if (response.success) {
+        task.status = 'completed'
+        task.progress = 100
+        task.apiTaskId = response.task_id
+        
+        // 设置文件名
+        if (response.result && response.result.markdown_file) {
+          const filePath = response.result.markdown_file
+          task.fileName = filePath.split('/').pop() || 'article.md'
+        }
+      } else {
+        task.status = 'error'
+        task.errorMessage = response.error || '下载失败'
+      }
+    } catch (error) {
+      task.status = 'error'
+      task.errorMessage = error instanceof Error ? error.message : '网络请求失败'
+    }
+  }
+
+  // 调用后端API批量下载文章
+  const downloadBatchArticles = async (taskIds: string[]) => {
+    const pendingTasks = taskIds.map(id => tasks.value.find(t => t.id === id)).filter(Boolean)
+    
+    if (pendingTasks.length === 0) {
+      throw new Error('没有待下载的任务')
+    }
+
+    try {
+      const urls = pendingTasks.map(task => task!.url)
+      
+      // 调用后端批量下载API
+      const response = await apiRequest('/download/batch', {
+        method: 'POST',
+        body: JSON.stringify({ urls })
+      })
+
+      if (response.success) {
+        // 更新任务状态
+        pendingTasks.forEach((task, index) => {
+          if (task) {
+            task.status = 'completed'
+            task.progress = 100
+            task.apiTaskId = `${response.batch_id}_${index}`
+            
+            // 设置文件名
+            if (response.results && response.results[index] && response.results[index].markdown_file) {
+              const filePath = response.results[index].markdown_file
+              task.fileName = filePath.split('/').pop() || 'article.md'
+            }
+          }
+        })
+      } else {
+        // 批量下载失败
+        pendingTasks.forEach(task => {
+          if (task) {
+            task.status = 'error'
+            task.errorMessage = response.error || '批量下载失败'
+          }
+        })
+      }
+    } catch (error) {
+      pendingTasks.forEach(task => {
+        if (task) {
+          task.status = 'error'
+          task.errorMessage = error instanceof Error ? error.message : '网络请求失败'
+        }
+      })
+    }
+  }
+
+  // 检查任务状态
+  const checkTaskStatus = async (taskId: string) => {
+    const task = tasks.value.find(t => t.id === taskId)
+    if (!task || !task.apiTaskId) {
+      return
+    }
+
+    try {
+      const response = await apiRequest(`/tasks/${task.apiTaskId}`)
+      if (response.success) {
+        const apiTask = response.task
+        task.status = apiTask.status
+        task.progress = apiTask.progress
+        
+        if (apiTask.status === 'error') {
+          task.errorMessage = apiTask.error_message
+        }
+      }
+    } catch (error) {
+      console.error('检查任务状态失败:', error)
+    }
+  }
+
+  // 健康检查
+  const healthCheck = async () => {
+    try {
+      const response = await apiRequest('/health')
+      return response.status === 'ok'
+    } catch (error) {
+      console.error('API健康检查失败:', error)
+      return false
+    }
+  }
+
   return {
     tasks,
     isBatchDownloading,
@@ -101,6 +246,10 @@ export const useDownloadStore = defineStore('download', () => {
     getPendingTasks,
     getDownloadingTasks,
     getCompletedTasks,
-    getErrorTasks
+    getErrorTasks,
+    downloadSingleArticle,
+    downloadBatchArticles,
+    checkTaskStatus,
+    healthCheck
   }
 })

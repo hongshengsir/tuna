@@ -20,7 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
+output/
 # 虚拟环境
 .env
 .venv

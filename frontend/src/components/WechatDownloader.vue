@@ -228,20 +228,26 @@ const startBatchDownload = async () => {
     return
   }
 
+  // 检查API服务是否可用
+  const isApiHealthy = await downloadStore.healthCheck()
+  if (!isApiHealthy) {
+    message.error('后端API服务不可用，请确保Python服务器已启动')
+    return
+  }
+
   downloadStore.startBatchDownload()
   
-  // 模拟批量下载过程
-  for (let i = 0; i < pendingTasks.value.length; i++) {
-    const task = pendingTasks.value[i]
-    await startSingleDownload(task.id)
+  try {
+    // 调用后端API批量下载
+    const taskIds = pendingTasks.value.map(task => task.id)
+    await downloadStore.downloadBatchArticles(taskIds)
     
-    // 更新批量进度
-    const progress = Math.round(((i + 1) / pendingTasks.value.length) * 100)
-    downloadStore.updateBatchProgress(progress)
+    downloadStore.endBatchDownload()
+    message.success('批量下载完成')
+  } catch (error) {
+    downloadStore.endBatchDownload()
+    message.error('批量下载失败')
   }
-  
-  downloadStore.endBatchDownload()
-  message.success('批量下载完成')
 }
 
 // 单个下载
@@ -249,24 +255,17 @@ const startSingleDownload = async (taskId: string) => {
   downloadStore.updateTaskStatus(taskId, 'downloading', 0)
   
   try {
-    // 模拟下载过程
-    for (let progress = 0; progress <= 100; progress += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200))
-      downloadStore.updateTaskStatus(taskId, 'downloading', progress)
+    // 检查API服务是否可用
+    const isApiHealthy = await downloadStore.healthCheck()
+    if (!isApiHealthy) {
+      throw new Error('后端API服务不可用')
     }
     
-    // 模拟下载完成
-    downloadStore.updateTaskStatus(taskId, 'completed', 100)
-    
-    // 生成文件名
-    const task = downloadStore.tasks.find(t => t.id === taskId)
-    if (task) {
-      const fileName = `wechat_article_${Date.now()}.md`
-      task.fileName = fileName
-    }
+    // 调用后端API下载
+    await downloadStore.downloadSingleArticle(taskId)
     
   } catch (error) {
-    downloadStore.updateTaskStatus(taskId, 'error', 0, '下载失败')
+    downloadStore.updateTaskStatus(taskId, 'error', 0, error instanceof Error ? error.message : '下载失败')
   }
 }
 
