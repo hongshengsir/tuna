@@ -232,6 +232,88 @@ export const useDownloadStore = defineStore('download', () => {
     }
   }
 
+  // 下载单个目录的压缩包
+  const downloadDirectoryZip = async (directoryPath: string) => {
+    try {
+      // 调用后端API下载ZIP文件
+      const response = await fetch(`${API_BASE_URL}/download/zip/${encodeURIComponent(directoryPath)}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // 获取文件名
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = 'download.zip'
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/)
+        if (match) {
+          filename = match[1]
+        }
+      }
+      
+      // 创建Blob并下载
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return true
+    } catch (error) {
+      console.error('下载压缩包失败:', error)
+      throw error
+    }
+  }
+
+  // 下载多个目录的批量压缩包
+  const downloadBatchZip = async (directoryPaths: string[]) => {
+    try {
+      // 调用后端API下载批量ZIP文件
+      const response = await fetch(`${API_BASE_URL}/download/zip/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ directories: directoryPaths })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // 获取文件名
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = 'batch_download.zip'
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/)
+        if (match) {
+          filename = match[1]
+        }
+      }
+      
+      // 创建Blob并下载
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return true
+    } catch (error) {
+      console.error('下载批量压缩包失败:', error)
+      throw error
+    }
+  }
+
   return {
     tasks,
     isBatchDownloading,
@@ -250,6 +332,8 @@ export const useDownloadStore = defineStore('download', () => {
     downloadSingleArticle,
     downloadBatchArticles,
     checkTaskStatus,
-    healthCheck
+    healthCheck,
+    downloadDirectoryZip,
+    downloadBatchZip
   }
 })

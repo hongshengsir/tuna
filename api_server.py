@@ -9,11 +9,14 @@
 import os
 import json
 import time
+import zipfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from wechat_downloader import WeChatDownloader
 from pathlib import Path
 import logging
+import tempfile
+import shutil
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -259,6 +262,151 @@ def download_file(filename):
         return jsonify({
             'success': False,
             'error': '文件下载失败'
+        }), 500
+
+@app.route('/api/download/zip/<path:directory>', methods=['GET'])
+def download_zip(directory):
+    """将目录打包成ZIP文件下载"""
+    try:
+        dir_path = Path(directory)
+        
+        # 验证目录是否存在
+        if not dir_path.exists() or not dir_path.is_dir():
+            return jsonify({
+                'success': False,
+                'error': '目录不存在'
+            }), 404
+        
+        # 创建临时ZIP文件
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+            zip_filename = temp_zip.name
+        
+        # 创建ZIP文件
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 遍历目录中的所有文件
+            for root, dirs, files in os.walk(dir_path):
+                for file in files:
+                    file_path = Path(root) / file
+                    # 计算在ZIP文件中的相对路径
+                    arcname = file_path.relative_to(dir_path)
+                    zipf.write(file_path, arcname)
+        
+        # 获取目录名作为ZIP文件名
+        zip_basename = f"{dir_path.name}.zip"
+        
+        logger.info(f"创建ZIP文件: {zip_filename}, 包含目录: {directory}")
+        
+        # 发送ZIP文件
+        response = send_file(
+            zip_filename,
+            as_attachment=True,
+            download_name=zip_basename,
+            mimetype='application/zip'
+        )
+        
+        # 设置响应头，确保浏览器正确处理下载
+        response.headers['Content-Disposition'] = f'attachment; filename="{zip_basename}"'
+        
+        # 在响应完成后删除临时文件
+        @response.call_on_close
+        def cleanup():
+            try:
+                os.unlink(zip_filename)
+                logger.info(f"清理临时ZIP文件: {zip_filename}")
+            except Exception as e:
+                logger.error(f"清理临时文件失败: {e}")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"ZIP文件创建失败: {directory}, 错误: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'ZIP文件创建失败'
+        }), 500
+
+@app.route('/api/download/zip/batch', methods=['POST'])
+def download_batch_zip():
+    """将多个目录打包成一个ZIP文件下载"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'directories' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少目录列表参数'
+            }), 400
+        
+        directories = data['directories']
+        
+        if not isinstance(directories, list) or len(directories) == 0:
+            return jsonify({
+                'success': False,
+                'error': '目录列表不能为空'
+            }), 400
+        
+        # 验证所有目录是否存在
+        valid_dirs = []
+        for directory in directories:
+            dir_path = Path(directory)
+            if dir_path.exists() and dir_path.is_dir():
+                valid_dirs.append(dir_path)
+            else:
+                logger.warning(f"目录不存在或不是目录: {directory}")
+        
+        if len(valid_dirs) == 0:
+            return jsonify({
+                'success': False,
+                'error': '没有有效的目录'
+            }), 400
+        
+        # 创建临时ZIP文件
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+            zip_filename = temp_zip.name
+        
+        # 创建ZIP文件
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for dir_path in valid_dirs:
+                # 遍历目录中的所有文件
+                for root, dirs, files in os.walk(dir_path):
+                    for file in files:
+                        file_path = Path(root) / file
+                        # 计算在ZIP文件中的相对路径，包含目录名
+                        arcname = Path(dir_path.name) / file_path.relative_to(dir_path)
+                        zipf.write(file_path, arcname)
+        
+        # 生成ZIP文件名
+        zip_basename = f"wechat_articles_batch_{int(time.time())}.zip"
+        
+        logger.info(f"创建批量ZIP文件: {zip_filename}, 包含 {len(valid_dirs)} 个目录")
+        
+        # 发送ZIP文件
+        response = send_file(
+            zip_filename,
+            as_attachment=True,
+            download_name=zip_basename,
+            mimetype='application/zip'
+        )
+        
+        # 设置响应头
+        response.headers['Content-Disposition'] = f'attachment; filename="{zip_basename}"'
+        
+        # 在响应完成后删除临时文件
+        @response.call_on_close
+        def cleanup():
+            try:
+                os.unlink(zip_filename)
+                logger.info(f"清理临时批量ZIP文件: {zip_filename}")
+            except Exception as e:
+                logger.error(f"清理临时批量文件失败: {e}")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"批量ZIP文件创建失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '批量ZIP文件创建失败'
         }), 500
 
 def is_valid_wechat_url(url):

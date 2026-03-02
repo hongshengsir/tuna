@@ -32,6 +32,11 @@
             <template #icon><DownloadOutlined /></template>
             批量下载 ({{ pendingTasks.length }})
           </a-button>
+          
+          <a-button type="dashed" @click="downloadZip" :disabled="completedTasks.length === 0">
+            <template #icon><FileZipOutlined /></template>
+            下载压缩包 ({{ completedTasks.length }})
+          </a-button>
         </div>
       </a-space>
     </a-card>
@@ -139,7 +144,8 @@ import {
   ClearOutlined, 
   DeleteOutlined, 
   DownloadOutlined,
-  FileTextOutlined 
+  FileTextOutlined,
+  FileZipOutlined 
 } from '@ant-design/icons-vue'
 import { useDownloadStore, type DownloadTask } from '@/stores/download'
 
@@ -291,6 +297,50 @@ const clearAll = () => {
 const clearCompleted = () => {
   downloadStore.clearCompletedTasks()
   message.success('已清除已完成任务')
+}
+
+// 下载压缩包
+const downloadZip = async () => {
+  if (completedTasks.value.length === 0) {
+    message.warning('没有已完成的下载任务')
+    return
+  }
+
+  // 检查API服务是否可用
+  const isApiHealthy = await downloadStore.healthCheck()
+  if (!isApiHealthy) {
+    message.error('后端API服务不可用，请确保Python服务器已启动')
+    return
+  }
+
+  try {
+    // 获取已下载文章的目录路径
+    const directoryPaths = completedTasks.value.map(task => {
+      // 根据文件名推断目录路径
+      if (task.fileName) {
+        const fileName = task.fileName.replace('.md', '')
+        return `./${fileName}`
+      }
+      return null
+    }).filter(Boolean) as string[]
+
+    if (directoryPaths.length === 0) {
+      message.warning('无法获取下载文件的目录信息')
+      return
+    }
+
+    // 如果只有一个目录，下载单个压缩包；多个目录则下载批量压缩包
+    if (directoryPaths.length === 1) {
+      await downloadStore.downloadDirectoryZip(directoryPaths[0])
+    } else {
+      await downloadStore.downloadBatchZip(directoryPaths)
+    }
+    
+    message.success('压缩包下载成功')
+  } catch (error) {
+    console.error('压缩包下载失败:', error)
+    message.error('压缩包下载失败，请检查后端服务状态')
+  }
 }
 
 // 格式化时间
