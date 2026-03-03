@@ -4,6 +4,7 @@
 微信文章下载API服务器
 
 提供RESTful API接口供前端调用下载功能
+集成功能实现过程记录系统
 """
 
 import os
@@ -18,6 +19,7 @@ import logging
 import tempfile
 import shutil
 import glob
+from feature_recorder import FeatureRecorder, record_feature
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,6 +30,9 @@ CORS(app)  # 允许跨域请求
 
 # 全局下载器实例
 downloader = WeChatDownloader()
+
+# 功能记录器实例
+feature_recorder = FeatureRecorder()
 
 # 存储下载任务状态
 download_tasks = {}
@@ -568,9 +573,200 @@ def list_markdown_directories():
             'error': '获取目录列表失败'
         }), 500
 
+# ===========================================================================
+# 功能记录系统API端点
+# ===========================================================================
+
+@app.route('/api/features', methods=['GET'])
+def list_features():
+    """获取功能记录列表"""
+    try:
+        features = feature_recorder.get_feature_list()
+        
+        return jsonify({
+            'success': True,
+            'features': features,
+            'total': len(features)
+        })
+        
+    except Exception as e:
+        logger.error(f"获取功能记录列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取功能记录列表失败'
+        }), 500
+
+@app.route('/api/features/<feature_id>', methods=['GET'])
+def get_feature_detail(feature_id):
+    """获取功能详情"""
+    try:
+        feature_data = feature_recorder.get_feature_details(feature_id)
+        
+        if not feature_data:
+            return jsonify({
+                'success': False,
+                'error': '功能记录不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'feature': feature_data
+        })
+        
+    except Exception as e:
+        logger.error(f"获取功能详情失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取功能详情失败'
+        }), 500
+
+@app.route('/api/features', methods=['POST'])
+def start_feature():
+    """开始记录新功能"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'name' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少功能名称参数'
+            }), 400
+        
+        feature_id = feature_recorder.start_feature(
+            data['name'],
+            data.get('description', ''),
+            data.get('priority', 'medium')
+        )
+        
+        logger.info(f"开始记录新功能: {data['name']}, ID: {feature_id}")
+        
+        return jsonify({
+            'success': True,
+            'feature_id': feature_id,
+            'message': '功能记录已开始'
+        })
+        
+    except Exception as e:
+        logger.error(f"开始功能记录失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '开始功能记录失败'
+        }), 500
+
+@app.route('/api/features/<feature_id>/steps', methods=['POST'])
+def add_feature_step(feature_id):
+    """为功能添加实现步骤"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'description' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少步骤描述参数'
+            }), 400
+        
+        feature_recorder.add_step(
+            data['description'],
+            data.get('type', 'implementation'),
+            data.get('details', ''),
+            data.get('code_snippet', '')
+        )
+        
+        logger.info(f"为功能 {feature_id} 添加步骤: {data['description']}")
+        
+        return jsonify({
+            'success': True,
+            'message': '步骤已添加'
+        })
+        
+    except Exception as e:
+        logger.error(f"添加功能步骤失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '添加功能步骤失败'
+        }), 500
+
+@app.route('/api/features/<feature_id>/complete', methods=['POST'])
+def complete_feature(feature_id):
+    """完成功能记录"""
+    try:
+        data = request.get_json() or {}
+        
+        feature_recorder.complete_feature(
+            data.get('summary', ''),
+            data.get('time_spent_minutes', 0)
+        )
+        
+        logger.info(f"完成功能记录: {feature_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': '功能记录已完成'
+        })
+        
+    except Exception as e:
+        logger.error(f"完成功能记录失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '完成功能记录失败'
+        }), 500
+
+@app.route('/api/features/<feature_id>/markdown', methods=['GET'])
+def download_feature_markdown(feature_id):
+    """下载功能记录的markdown报告"""
+    try:
+        md_file = feature_recorder.records_dir / f"{feature_id}.md"
+        
+        if not md_file.exists():
+            return jsonify({
+                'success': False,
+                'error': 'markdown文件不存在'
+            }), 404
+        
+        return send_file(
+            md_file,
+            as_attachment=True,
+            download_name=f"{feature_id}.md",
+            mimetype='text/markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"下载markdown报告失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '下载markdown报告失败'
+        }), 500
+
+# ===========================================================================
+# 自动记录装饰器示例
+# ===========================================================================
+
+@record_feature("自动记录测试", "测试功能记录系统的自动记录功能")
+def test_auto_recording():
+    """测试自动记录功能的示例函数"""
+    logger.info("执行自动记录测试函数")
+    return "测试完成"
+
+@app.route('/api/test/auto-record', methods=['GET'])
+def test_auto_record():
+    """测试自动记录功能"""
+    try:
+        result = test_auto_recording()
+        return jsonify({
+            'success': True,
+            'result': result
+        })
+    except Exception as e:
+        logger.error(f"自动记录测试失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     print("启动微信文章下载API服务器...")
     print("API地址: http://localhost:5000")
     print("健康检查: http://localhost:5000/api/health")
+    print("功能记录API: http://localhost:5000/api/features")
     
     app.run(host='0.0.0.0', port=5000, debug=True)

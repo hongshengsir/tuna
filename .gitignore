@@ -21,6 +21,7 @@ wheels/
 *.egg
 MANIFEST
 output/
+feature_records/
 # 虚拟环境
 .env
 .venv
