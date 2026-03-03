@@ -17,6 +17,7 @@ from pathlib import Path
 import logging
 import tempfile
 import shutil
+import glob
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -421,6 +422,151 @@ def is_valid_wechat_url(url):
     
     import re
     return any(re.match(pattern, url, re.IGNORECASE) for pattern in wechat_patterns)
+
+@app.route('/api/markdown/files', methods=['GET'])
+def list_markdown_files():
+    """获取所有markdown文件列表"""
+    try:
+        # 获取当前工作目录下的所有markdown文件
+        current_dir = Path.cwd()
+        markdown_files = []
+        
+        # 查找所有.md文件
+        for md_file in current_dir.glob('**/*.md'):
+            # 跳过node_modules等目录
+            if 'node_modules' in str(md_file) or 'frontend' in str(md_file):
+                continue
+                
+            # 获取文件信息
+            file_info = {
+                'name': md_file.name,
+                'path': str(md_file),
+                'relative_path': str(md_file.relative_to(current_dir)),
+                'directory': str(md_file.parent.name),
+                'size': md_file.stat().st_size,
+                'modified_time': md_file.stat().st_mtime
+            }
+            markdown_files.append(file_info)
+        
+        # 按修改时间倒序排序
+        markdown_files.sort(key=lambda x: x['modified_time'], reverse=True)
+        
+        logger.info(f"找到 {len(markdown_files)} 个markdown文件")
+        
+        return jsonify({
+            'success': True,
+            'files': markdown_files,
+            'total': len(markdown_files)
+        })
+        
+    except Exception as e:
+        logger.error(f"获取markdown文件列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取文件列表失败'
+        }), 500
+
+@app.route('/api/markdown/read/<path:filepath>', methods=['GET'])
+def read_markdown_file(filepath):
+    """读取markdown文件内容"""
+    try:
+        file_path = Path(filepath)
+        
+        # 验证文件是否存在
+        if not file_path.exists():
+            return jsonify({
+                'success': False,
+                'error': '文件不存在'
+            }), 404
+        
+        # 验证文件扩展名
+        if file_path.suffix.lower() != '.md':
+            return jsonify({
+                'success': False,
+                'error': '不是markdown文件'
+            }), 400
+        
+        # 读取文件内容
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 获取文件信息
+        file_info = {
+            'name': file_path.name,
+            'path': str(file_path),
+            'size': file_path.stat().st_size,
+            'modified_time': file_path.stat().st_mtime
+        }
+        
+        logger.info(f"读取markdown文件: {filepath}, 大小: {len(content)} 字符")
+        
+        return jsonify({
+            'success': True,
+            'content': content,
+            'file_info': file_info
+        })
+        
+    except Exception as e:
+        logger.error(f"读取markdown文件失败: {filepath}, 错误: {e}")
+        return jsonify({
+            'success': False,
+            'error': '读取文件失败'
+        }), 500
+
+@app.route('/api/markdown/directories', methods=['GET'])
+def list_markdown_directories():
+    """获取包含markdown文件的目录列表"""
+    try:
+        current_dir = Path.cwd()
+        directories = {}
+        
+        # 查找所有包含.md文件的目录
+        for md_file in current_dir.glob('**/*.md'):
+            # 跳过node_modules等目录
+            if 'node_modules' in str(md_file) or 'frontend' in str(md_file):
+                continue
+            
+            dir_path = md_file.parent
+            dir_name = dir_path.name
+            
+            if dir_name not in directories:
+                # 获取目录信息
+                dir_info = {
+                    'name': dir_name,
+                    'path': str(dir_path),
+                    'file_count': 0,
+                    'files': []
+                }
+                directories[dir_name] = dir_info
+            
+            # 添加文件信息
+            file_info = {
+                'name': md_file.name,
+                'path': str(md_file),
+                'size': md_file.stat().st_size,
+                'modified_time': md_file.stat().st_mtime
+            }
+            directories[dir_name]['files'].append(file_info)
+            directories[dir_name]['file_count'] += 1
+        
+        # 转换为列表并按文件数量排序
+        directories_list = list(directories.values())
+        directories_list.sort(key=lambda x: x['file_count'], reverse=True)
+        
+        logger.info(f"找到 {len(directories_list)} 个包含markdown文件的目录")
+        
+        return jsonify({
+            'success': True,
+            'directories': directories_list,
+            'total': len(directories_list)
+        })
+        
+    except Exception as e:
+        logger.error(f"获取markdown目录列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取目录列表失败'
+        }), 500
 
 if __name__ == '__main__':
     print("启动微信文章下载API服务器...")
