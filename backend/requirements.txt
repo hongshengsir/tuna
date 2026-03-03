@@ -1,0 +1,32 @@
+# Tuna Backend 依赖包
+# 微信文章下载与处理系统
+
+# Web框架
+Flask==2.3.3
+
+# HTTP请求
+requests==2.31.0
+
+# 命令行界面
+click==8.1.7
+
+# HTML解析
+beautifulsoup4==4.12.2
+
+# 数据处理
+pandas==2.0.3
+
+# 日期处理
+python-dateutil==2.8.2
+
+# 日志配置
+python-json-logger==2.0.7
+
+# 开发工具
+pytest==7.4.0
+pytest-cov==4.1.0
+
+# 代码质量检查
+flake8==6.0.0
+black==23.7.0
+isort==5.12.0

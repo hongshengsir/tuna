@@ -13,18 +13,15 @@ import time
 import zipfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import sys
 from pathlib import Path
 import logging
 import tempfile
 import shutil
 import glob
 
-# 添加backend/src目录到Python路径
-sys.path.insert(0, str(Path(__file__).parent / "backend" / "src"))
-
-from backend.src.core.wechat_downloader import WeChatDownloader
-from backend.src.utils.feature_recorder import FeatureRecorder, record_feature
+# 导入项目模块
+from ..core.wechat_downloader import WeChatDownloader
+from ..utils.feature_recorder import FeatureRecorder, record_feature
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file
 from datetime import datetime
-from feature_recorder import FeatureRecorder
+from .feature_recorder import FeatureRecorder
 
 app = Flask(__name__)
 recorder = FeatureRecorder()

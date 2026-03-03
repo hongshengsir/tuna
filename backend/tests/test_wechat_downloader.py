@@ -8,11 +8,11 @@ import os
 import sys
 from pathlib import Path
 
-# 添加当前目录到Python路径
-sys.path.insert(0, str(Path(__file__).parent))
+# 添加项目根目录到Python路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from wechat_downloader import WeChatDownloader
-from batch_processor import BatchProcessor
+from backend.src.core.wechat_downloader import WeChatDownloader
+from backend.src.services.batch_processor import BatchProcessor
 
 def test_single_download():
     """测试单个文章下载"""
@@ -66,7 +66,7 @@ def test_media_downloader():
     
     try:
         import requests
-        from media_downloader import MediaDownloader
+        from backend.src.services.media_downloader import MediaDownloader
         from bs4 import BeautifulSoup
         
         # 创建一个简单的测试HTML

@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 import logging
 
-from utils import sanitize_filename, get_file_extension, generate_unique_filename, format_file_size
+from ..utils.file_utils import sanitize_filename, get_file_extension, generate_unique_filename, format_file_size
 
 logger = logging.getLogger(__name__)
 

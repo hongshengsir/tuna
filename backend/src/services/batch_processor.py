@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import List, Dict
 
-from wechat_downloader import WeChatDownloader
+from ..core.wechat_downloader import WeChatDownloader
 
 class BatchProcessor:
     """批处理处理器"""
