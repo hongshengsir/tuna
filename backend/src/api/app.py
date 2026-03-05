@@ -5,6 +5,7 @@
 
 提供RESTful API接口供前端调用下载功能
 集成功能实现过程记录系统
+支持用户管理功能
 """
 
 import os
@@ -23,12 +24,38 @@ import glob
 from ..core.wechat_downloader import WeChatDownloader
 from ..utils.feature_recorder import FeatureRecorder, record_feature
 
+# 导入用户管理模块
+from ..config.database import get_db, create_tables
+from ..models.user_dao import UserDAO
+
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
+
+# 创建全局数据库连接池
+_db_pool = None
+
+def init_db_pool():
+    """初始化数据库连接池"""
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = get_db()
+
+def get_db_connection():
+    """获取数据库连接"""
+    global _db_pool
+    if _db_pool is None:
+        init_db_pool()
+    return _db_pool
+
+# 初始化数据库连接池
+init_db_pool()
+
+# 创建全局UserDAO实例
+user_dao = UserDAO(get_db_connection())
 
 # 全局下载器实例
 downloader = WeChatDownloader()
@@ -73,6 +100,344 @@ def health_check():
         'message': 'API服务器运行正常',
         'timestamp': time.time()
     })
+
+# 用户管理API接口
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    """获取用户列表"""
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        keyword = request.args.get('keyword', '')
+        
+        skip = (page - 1) * per_page
+        
+        if keyword:
+            users = user_dao.search_users(keyword, skip, per_page)
+            total = len(user_dao.search_users(keyword, 0, 1000))
+        else:
+            users = user_dao.get_all_users(skip, per_page)
+            total = user_dao.get_user_count()
+        
+        return jsonify({
+            'success': True,
+            'data': [user.to_dict() for user in users],
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取用户列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取用户列表失败'
+        }), 500
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    """创建新用户"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '缺少请求数据'
+            }), 400
+        
+        required_fields = ['username', 'email', 'password']
+        for field in required_fields:
+            if field not in data or not data[field].strip():
+                return jsonify({
+                    'success': False,
+                    'error': f'缺少必填字段: {field}'
+                }), 400
+        
+        # 创建用户
+        user = user_dao.create_user(
+            username=data['username'].strip(),
+            email=data['email'].strip(),
+            password=data['password'],
+            full_name=data.get('full_name', '').strip(),
+            phone=data.get('phone', '').strip(),
+            avatar=data.get('avatar', '').strip(),
+            is_active=data.get('is_active', True),
+            is_superuser=data.get('is_superuser', False)
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': '用户创建成功',
+            'data': user.to_dict()
+        }), 201
+        
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        logger.error(f"创建用户失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '创建用户失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    """获取用户详情"""
+    try:
+        user = user_dao.get_user_by_id(user_id)
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': user.to_dict(include_sensitive=True)
+        })
+        
+    except Exception as e:
+        logger.error(f"获取用户详情失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取用户详情失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
+    """更新用户信息"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '缺少请求数据'
+            }), 400
+        
+        # 不允许修改的字段
+        forbidden_fields = ['id', 'created_at', 'password_hash']
+        for field in forbidden_fields:
+            if field in data:
+                del data[field]
+        
+        user = user_dao.update_user(user_id, data)
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '用户信息更新成功',
+            'data': user.to_dict()
+        })
+        
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        logger.error(f"更新用户信息失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '更新用户信息失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    """删除用户"""
+    try:
+        success = user_dao.delete_user(user_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '用户删除成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"删除用户失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '删除用户失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>/password', methods=['PUT'])
+def change_password(user_id):
+    """修改用户密码"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'new_password' not in data or not data['new_password'].strip():
+            return jsonify({
+                'success': False,
+                'error': '缺少新密码参数'
+            }), 400
+        
+        success = user_dao.change_password(user_id, data['new_password'])
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '密码修改成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"修改密码失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '修改密码失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>/activate', methods=['PUT'])
+def activate_user(user_id):
+    """激活用户"""
+    try:
+        success = user_dao.activate_user(user_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '用户激活成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"激活用户失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '激活用户失败'
+        }), 500
+
+@app.route('/api/users/<int:user_id>/deactivate', methods=['PUT'])
+def deactivate_user(user_id):
+    """禁用用户"""
+    try:
+        success = user_dao.deactivate_user(user_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '用户禁用成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"禁用用户失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '禁用用户失败'
+        }), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """用户登录"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少用户名或密码'
+            }), 400
+        
+        user = user_dao.authenticate_user(data['username'], data['password'])
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': '用户名或密码错误'
+            }), 401
+        
+        return jsonify({
+            'success': True,
+            'message': '登录成功',
+            'data': user.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"用户登录失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '登录失败'
+        }), 500
+
+@app.route('/api/users/me', methods=['GET'])
+def get_current_user():
+    """获取当前用户信息"""
+    try:
+        # 简化实现：由于没有真正的认证系统，这里返回一个默认用户
+        # 在实际应用中，应该从会话或JWT令牌中获取用户信息
+        
+        # 获取第一个用户作为当前用户（演示用）
+        users = user_dao.get_all_users(0, 1)
+        if not users:
+            return jsonify({
+                'success': False,
+                'error': '没有用户数据'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'user': users[0].to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取当前用户信息失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取用户信息失败'
+        }), 500
+
+@app.route('/api/auth/me', methods=['GET'])
+def get_auth_me():
+    """获取当前认证用户信息（兼容前端调用）"""
+    try:
+        # 简化实现：由于没有真正的认证系统，这里返回一个默认用户
+        # 在实际应用中，应该从会话或JWT令牌中获取用户信息
+        
+        # 获取第一个用户作为当前用户（演示用）
+        users = user_dao.get_all_users(0, 1)
+        if not users:
+            return jsonify({
+                'success': False,
+                'error': '没有用户数据'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': users[0].to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取当前用户信息失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取用户信息失败'
+        }), 500
 
 @app.route('/api/download/single', methods=['POST'])
 def download_single():

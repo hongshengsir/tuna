@@ -7,16 +7,41 @@
             🐟 微信文章下载工具
           </h1>
           
-          <a-menu v-model:selectedKeys="currentRoute" mode="horizontal" style="border: none">
-            <a-menu-item key="/" @click="navigateTo('/')">
-              <template #icon><DownloadOutlined /></template>
-              文章下载
-            </a-menu-item>
-            <a-menu-item key="/markdown" @click="navigateTo('/markdown')">
-              <template #icon><FileTextOutlined /></template>
-              Markdown查看器
-            </a-menu-item>
-          </a-menu>
+          <div style="display: flex; align-items: center; gap: 24px">
+            <a-menu v-model:selectedKeys="currentRoute" mode="horizontal" style="border: none">
+              <a-menu-item key="/" @click="navigateTo('/')">
+                <template #icon><DownloadOutlined /></template>
+                文章下载
+              </a-menu-item>
+              <a-menu-item key="/markdown" @click="navigateTo('/markdown')">
+                <template #icon><FileTextOutlined /></template>
+                Markdown查看器
+              </a-menu-item>
+              <a-menu-item v-if="userStore.isAuthenticated" key="/users" @click="navigateTo('/users')">
+                <template #icon><UserOutlined /></template>
+                用户管理
+              </a-menu-item>
+            </a-menu>
+            
+            <!-- 用户状态显示 -->
+            <div v-if="userStore.isAuthenticated && userStore.currentUser" style="display: flex; align-items: center; gap: 12px">
+              <a-avatar style="background-color: #1890ff">
+                {{ userStore.currentUser.username.charAt(0).toUpperCase() }}
+              </a-avatar>
+              <span style="color: #666">欢迎，{{ userStore.currentUser.username }}</span>
+              <a-button type="link" @click="handleLogout" size="small">
+                退出登录
+              </a-button>
+            </div>
+            <div v-else style="display: flex; align-items: center; gap: 12px">
+              <a-button type="primary" @click="navigateTo('/login')" size="small">
+                登录
+              </a-button>
+              <a-button @click="navigateTo('/login')" size="small">
+                注册
+              </a-button>
+            </div>
+          </div>
         </div>
       </a-layout-header>
       
@@ -32,17 +57,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { DownloadOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 const currentRoute = ref([route.path])
 
 const navigateTo = (path: string) => {
   router.push(path)
 }
+
+const handleLogout = () => {
+  userStore.logout()
+  message.success('退出登录成功')
+  navigateTo('/')
+}
+
+// 页面加载时检查登录状态
+onMounted(async () => {
+  await userStore.checkAuth()
+})
 
 watch(() => route.path, (newPath) => {
   currentRoute.value = [newPath]
