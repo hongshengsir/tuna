@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-数据库配置模块 - 使用纯Python MySQL连接
+数据库配置模块 - 使用PyMySQL连接
 """
 
 import os
-import mysql.connector
-from mysql.connector import pooling
+import pymysql
+from pymysql import cursors
 
 # 数据库配置
 DATABASE_CONFIG = {
@@ -20,18 +20,12 @@ DATABASE_CONFIG = {
     'pool_size': 5
 }
 
-# 创建连接池
-try:
-    connection_pool = pooling.MySQLConnectionPool(**DATABASE_CONFIG)
-except:
-    connection_pool = None
-
+# 创建数据库连接
 def get_db():
     """获取数据库连接"""
-    if connection_pool:
-        return connection_pool.get_connection()
-    else:
-        return mysql.connector.connect(**{k: v for k, v in DATABASE_CONFIG.items() if k not in ['pool_name', 'pool_size']})
+    # 移除连接池相关配置
+    db_config = {k: v for k, v in DATABASE_CONFIG.items() if k not in ['pool_name', 'pool_size']}
+    return pymysql.connect(**db_config)
 
 def create_tables():
     """创建用户表"""
