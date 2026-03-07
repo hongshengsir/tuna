@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
 
+# 导入数据库相关模块
+from ..models.download_record import DownloadRecord
+from ..models.download_record_dao import DownloadRecordDAO
+
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,8 +31,9 @@ logger = logging.getLogger(__name__)
 class WeChatDownloader:
     """微信文章下载器"""
     
-    def __init__(self, output_dir: str = "output"):
+    def __init__(self, output_dir: str = "output", user_id: int = None, db_connection=None):
         self.output_dir = Path(output_dir)
+        self.user_id = user_id
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -36,6 +41,9 @@ class WeChatDownloader:
         
         # 创建输出目录
         self.output_dir.mkdir(exist_ok=True)
+        
+        # 初始化下载记录DAO
+        self.download_dao = DownloadRecordDAO(db_connection)
         
     def download_article(self, url: str) -> Dict:
         """下载微信文章"""
@@ -51,6 +59,16 @@ class WeChatDownloader:
             
             # 提取文章信息
             article_info = self._extract_article_info(soup, url)
+            
+            # 创建下载记录
+            download_record = DownloadRecord(
+                user_id=self.user_id,
+                url=url,
+                title=article_info.get('title', '未知标题'),
+                author=article_info.get('author', '未知作者'),
+                download_status='downloading'
+            )
+            record_id = self.download_dao.create_record(download_record)
             
             # 创建文章目录
             article_dir = self._create_article_directory(article_info['title'])
@@ -68,14 +86,30 @@ class WeChatDownloader:
             
             article_info['markdown_file'] = str(markdown_file)
             article_info['media_count'] = media_info['count']
+            article_info['download_time'] = time.time()
+            
+            # 更新下载记录状态
+            self.download_dao.update_record_status(
+                record_id=record_id,
+                status='completed',
+                markdown_file=str(markdown_file),
+                media_count=media_info['count'],
+                file_size=markdown_file.stat().st_size
+            )
             
             print(f"✓ 文章下载完成: {markdown_file}")
-            return article_info
+            return {"success": True, "data": article_info}
             
         except Exception as e:
             logger.error(f"下载文章失败: {e}")
             print(f"✗ 下载失败: {e}")
-            raise
+            # 更新下载记录状态为失败
+            if 'record_id' in locals():
+                self.download_dao.update_record_status(
+                    record_id=record_id,
+                    status='failed'
+                )
+            return {"success": False, "error": str(e)}
     
     def _extract_article_info(self, soup: BeautifulSoup, url: str) -> Dict:
         """提取文章基本信息"""

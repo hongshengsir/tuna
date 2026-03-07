@@ -28,7 +28,7 @@ def get_db():
     return pymysql.connect(**db_config)
 
 def create_tables():
-    """创建用户表"""
+    """创建所有数据表"""
     conn = get_db()
     cursor = conn.cursor()
     
@@ -53,8 +53,31 @@ def create_tables():
             )
         """)
         
+        # 创建下载记录表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS download_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                url VARCHAR(500) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                author VARCHAR(100),
+                download_status VARCHAR(20) DEFAULT 'pending',
+                markdown_file VARCHAR(500),
+                media_count INT DEFAULT 0,
+                file_size BIGINT DEFAULT 0,
+                download_time TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+                INDEX idx_user_id (user_id),
+                INDEX idx_url (url),
+                INDEX idx_status (download_status),
+                INDEX idx_created_at (created_at)
+            )
+        """)
+        
         conn.commit()
-        print("✅ 用户表创建成功")
+        print("✅ 所有数据表创建成功")
         
     except Exception as e:
         print(f"❌ 创建表失败: {e}")

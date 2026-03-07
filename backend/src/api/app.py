@@ -21,12 +21,16 @@ import shutil
 import glob
 
 # 导入项目模块
-from ..core.wechat_downloader import WeChatDownloader
-from ..utils.feature_recorder import FeatureRecorder, record_feature
+from src.core.wechat_downloader import WeChatDownloader
+from src.utils.feature_recorder import FeatureRecorder, record_feature
 
 # 导入用户管理模块
-from ..config.database import get_db, create_tables
-from ..models.user_dao import UserDAO
+from src.config.database import get_db, create_tables
+from src.models.user_dao import UserDAO
+
+# 导入下载记录模块
+from src.models.download_record import DownloadRecord
+from src.models.download_record_dao import DownloadRecordDAO
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -57,8 +61,11 @@ init_db_pool()
 # 创建全局UserDAO实例
 user_dao = UserDAO(get_db_connection())
 
+# 创建全局DownloadRecordDAO实例
+download_record_dao = DownloadRecordDAO(get_db_connection())
+
 # 全局下载器实例
-downloader = WeChatDownloader()
+downloader = WeChatDownloader(db_connection=get_db_connection())
 
 # 功能记录器实例
 feature_recorder = FeatureRecorder()
@@ -460,10 +467,16 @@ def download_single():
                 'error': '无效的微信文章链接'
             }), 400
         
+        # 获取用户ID（可选，默认为None）
+        user_id = data.get('user_id')
+        
         # 创建下载任务
         task_id = str(int(time.time() * 1000))
         task = DownloadTask(task_id, url)
         download_tasks[task_id] = task
+        
+        # 创建带用户ID的下载器实例
+        user_downloader = WeChatDownloader(user_id=user_id, db_connection=get_db_connection())
         
         # 开始下载（异步执行）
         task.status = 'downloading'
@@ -471,7 +484,7 @@ def download_single():
         
         try:
             # 执行下载
-            result = downloader.download_article(url)
+            result = user_downloader.download_article(url)
             
             task.status = 'completed'
             task.progress = 100
@@ -539,6 +552,9 @@ def download_batch():
                 'error': '没有有效的微信文章链接'
             }), 400
         
+        # 获取用户ID（可选，默认为None）
+        user_id = data.get('user_id')
+        
         # 创建批量下载任务
         batch_id = str(int(time.time() * 1000))
         batch_tasks = []
@@ -549,6 +565,9 @@ def download_batch():
             download_tasks[task_id] = task
             batch_tasks.append(task)
         
+        # 创建带用户ID的下载器实例
+        user_downloader = WeChatDownloader(user_id=user_id, db_connection=get_db_connection())
+        
         # 开始批量下载（简化实现，实际应该异步执行）
         results = []
         total = len(batch_tasks)
@@ -558,7 +577,7 @@ def download_batch():
             task.start_time = time.time()
             
             try:
-                result = downloader.download_article(task.url)
+                result = user_downloader.download_article(task.url)
                 task.status = 'completed'
                 task.progress = 100
                 task.result = result
@@ -616,6 +635,116 @@ def list_tasks():
         'tasks': tasks,
         'total': len(tasks)
     })
+
+# 下载记录管理API接口
+@app.route('/api/download/records', methods=['GET'])
+def get_download_records():
+    """获取下载记录列表"""
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        user_id = request.args.get('user_id')
+        status = request.args.get('status')
+        
+        skip = (page - 1) * per_page
+        
+        # 根据条件查询下载记录
+        if user_id:
+            records = download_record_dao.get_records_by_user_id(int(user_id), skip, per_page)
+            total = download_record_dao.get_record_count_by_user_id(int(user_id))
+        elif status:
+            records = download_record_dao.get_records_by_status(status, skip, per_page)
+            total = download_record_dao.get_record_count_by_status(status)
+        else:
+            records = download_record_dao.get_all_records(skip, per_page)
+            total = download_record_dao.get_total_record_count()
+        
+        return jsonify({
+            'success': True,
+            'data': [record.to_dict() for record in records],
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取下载记录列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取下载记录列表失败'
+        }), 500
+
+@app.route('/api/download/records/<int:record_id>', methods=['GET'])
+def get_download_record(record_id):
+    """获取下载记录详情"""
+    try:
+        record = download_record_dao.get_record_by_id(record_id)
+        if not record:
+            return jsonify({
+                'success': False,
+                'error': '下载记录不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': record.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取下载记录详情失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取下载记录详情失败'
+        }), 500
+
+@app.route('/api/download/records/<int:record_id>', methods=['DELETE'])
+def delete_download_record(record_id):
+    """删除下载记录"""
+    try:
+        success = download_record_dao.delete_record(record_id)
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': '下载记录不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'message': '下载记录删除成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"删除下载记录失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '删除下载记录失败'
+        }), 500
+
+@app.route('/api/download/records/stats', methods=['GET'])
+def get_download_stats():
+    """获取下载统计信息"""
+    try:
+        user_id = request.args.get('user_id')
+        
+        if user_id:
+            stats = download_record_dao.get_user_stats(int(user_id))
+        else:
+            stats = download_record_dao.get_overall_stats()
+        
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"获取下载统计信息失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '获取下载统计信息失败'
+        }), 500
 
 @app.route('/api/files/<path:filename>', methods=['GET'])
 def download_file(filename):
