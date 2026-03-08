@@ -23,7 +23,8 @@ class DownloadRecord:
                  file_size=0,
                  download_time=None,
                  created_at=None,
-                 updated_at=None):
+                 updated_at=None,
+                 source_type='wechat'):  # wechat, web
         """初始化下载记录"""
         self.id = id
         self.user_id = user_id
@@ -37,6 +38,7 @@ class DownloadRecord:
         self.download_time = download_time
         self.created_at = created_at
         self.updated_at = updated_at
+        self.source_type = source_type  # 文章来源类型
     
     @classmethod
     def from_db_row(cls, row):
@@ -55,8 +57,9 @@ class DownloadRecord:
             media_count=row[7],
             file_size=row[8],
             download_time=row[9],
-            created_at=row[10],
-            updated_at=row[11]
+            source_type=row[10],
+            created_at=row[11],
+            updated_at=row[12]
         )
     
     def to_dict(self):
@@ -72,6 +75,7 @@ class DownloadRecord:
             'media_count': self.media_count,
             'file_size': self.file_size,
             'download_time': self.download_time.isoformat() if self.download_time else None,
+            'source_type': self.source_type,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

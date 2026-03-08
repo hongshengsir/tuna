@@ -22,6 +22,7 @@ import glob
 
 # 导入项目模块
 from src.core.wechat_downloader import WeChatDownloader
+from src.core.web_article_downloader import WebArticleDownloader
 from src.utils.feature_recorder import FeatureRecorder, record_feature
 
 # 导入用户管理模块
@@ -1232,6 +1233,234 @@ def download_feature_markdown(feature_id):
             'success': False,
             'error': '下载markdown报告失败'
         }), 500
+
+# ===========================================================================
+# 网页文章下载API端点
+# ===========================================================================
+
+def is_valid_web_url(url):
+    """验证网页链接格式"""
+    import re
+    # 基本的URL验证，支持http和https协议
+    web_patterns = [
+        r'^https?://[\w\-\.]+\.[a-z]{2,}',
+        r'^https?://[\w\-\.]+\.[a-z]{2,}/.*',
+    ]
+    
+    # 排除微信文章链接（避免重复）
+    wechat_patterns = [
+        r'^https?://mp\.weixin\.qq\.com/.*',
+        r'^https?://.*weixin.*',
+    ]
+    
+    # 检查是否是微信链接
+    if any(re.match(pattern, url, re.IGNORECASE) for pattern in wechat_patterns):
+        return False
+    
+    # 检查是否是有效的网页链接
+    return any(re.match(pattern, url, re.IGNORECASE) for pattern in web_patterns)
+
+
+@app.route('/api/web/download/single', methods=['POST'])
+@record_feature("网页文章下载", "下载任意网页的文章内容")
+def download_web_single():
+    """单个网页文章下载接口"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'url' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少URL参数'
+            }), 400
+        
+        url = data['url'].strip()
+        
+        # 验证URL格式
+        if not is_valid_web_url(url):
+            return jsonify({
+                'success': False,
+                'error': '无效的网页链接'
+            }), 400
+        
+        # 获取用户ID（可选，默认为None）
+        user_id = data.get('user_id')
+        
+        # 创建下载任务
+        task_id = str(int(time.time() * 1000))
+        task = DownloadTask(task_id, url)
+        download_tasks[task_id] = task
+        
+        # 创建带用户ID的网页下载器实例
+        web_downloader = WebArticleDownloader(user_id=user_id, db_connection=get_db_connection())
+        
+        # 开始下载（异步执行）
+        task.status = 'downloading'
+        task.start_time = time.time()
+        
+        try:
+            # 执行下载
+            result = web_downloader.download_article(url)
+            
+            task.status = 'completed'
+            task.progress = 100
+            task.result = result
+            task.end_time = time.time()
+            
+            logger.info(f"网页文章下载任务完成: {task_id}")
+            
+            return jsonify({
+                'success': True,
+                'task_id': task_id,
+                'result': result
+            })
+            
+        except Exception as e:
+            task.status = 'error'
+            task.error_message = str(e)
+            task.end_time = time.time()
+            
+            logger.error(f"网页文章下载任务失败: {task_id}, 错误: {e}")
+            
+            return jsonify({
+                'success': False,
+                'task_id': task_id,
+                'error': str(e)
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"网页文章下载API调用异常: {e}")
+        return jsonify({
+            'success': False,
+            'error': '服务器内部错误'
+        }), 500
+
+
+@app.route('/api/web/download/batch', methods=['POST'])
+@record_feature("网页文章批量下载", "批量下载多个网页的文章内容")
+def download_web_batch():
+    """批量网页文章下载接口"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'urls' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少URL列表参数'
+            }), 400
+        
+        urls = data['urls']
+        
+        if not isinstance(urls, list) or len(urls) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'URL列表不能为空'
+            }), 400
+        
+        # 验证URL格式
+        valid_urls = []
+        for url in urls:
+            url = url.strip()
+            if url and is_valid_web_url(url):
+                valid_urls.append(url)
+        
+        if len(valid_urls) == 0:
+            return jsonify({
+                'success': False,
+                'error': '没有有效的网页链接'
+            }), 400
+        
+        # 获取用户ID（可选，默认为None）
+        user_id = data.get('user_id')
+        
+        # 创建批量下载任务
+        batch_id = str(int(time.time() * 1000))
+        batch_tasks = []
+        
+        for url in valid_urls:
+            task_id = f"{batch_id}_{len(batch_tasks)}"
+            task = DownloadTask(task_id, url)
+            download_tasks[task_id] = task
+            batch_tasks.append(task)
+        
+        # 创建带用户ID的网页下载器实例
+        web_downloader = WebArticleDownloader(user_id=user_id, db_connection=get_db_connection())
+        
+        # 开始批量下载（简化实现，实际应该异步执行）
+        results = []
+        total = len(batch_tasks)
+        
+        for i, task in enumerate(batch_tasks):
+            task.status = 'downloading'
+            task.start_time = time.time()
+            
+            try:
+                result = web_downloader.download_article(task.url)
+                task.status = 'completed'
+                task.progress = 100
+                task.result = result
+                task.end_time = time.time()
+                results.append(result)
+                
+                # 更新进度
+                progress = int((i + 1) / total * 100)
+                
+            except Exception as e:
+                task.status = 'error'
+                task.error_message = str(e)
+                task.end_time = time.time()
+                results.append({'error': str(e), 'url': task.url})
+        
+        logger.info(f"网页文章批量下载完成: {batch_id}, 成功: {len([r for r in results if 'error' not in r])}/{total}")
+        
+        return jsonify({
+            'success': True,
+            'batch_id': batch_id,
+            'total': total,
+            'completed': len([r for r in results if 'error' not in r]),
+            'failed': len([r for r in results if 'error' in r]),
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"网页文章批量下载API异常: {e}")
+        return jsonify({
+            'success': False,
+            'error': '服务器内部错误'
+        }), 500
+
+
+@app.route('/api/web/validate', methods=['POST'])
+def validate_web_url():
+    """验证网页链接格式"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'url' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少URL参数'
+            }), 400
+        
+        url = data['url'].strip()
+        
+        # 验证URL格式
+        is_valid = is_valid_web_url(url)
+        
+        return jsonify({
+            'success': True,
+            'url': url,
+            'is_valid': is_valid,
+            'type': 'web' if is_valid else 'invalid'
+        })
+        
+    except Exception as e:
+        logger.error(f"网页链接验证失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '验证失败'
+        }), 500
+
 
 # ===========================================================================
 # 自动记录装饰器示例

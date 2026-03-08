@@ -36,12 +36,14 @@ class DownloadRecordDAO:
                     media_count INT DEFAULT 0,
                     file_size BIGINT DEFAULT 0,
                     download_time TIMESTAMP NULL,
+                    source_type VARCHAR(20) DEFAULT 'wechat',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
                     INDEX idx_user_id (user_id),
                     INDEX idx_url (url),
                     INDEX idx_status (download_status),
+                    INDEX idx_source_type (source_type),
                     INDEX idx_created_at (created_at)
                 )
             """)
@@ -85,12 +87,12 @@ class DownloadRecordDAO:
             cursor.execute(f"""
                 INSERT INTO {self.table_name} 
                 (user_id, url, title, author, download_status, markdown_file, 
-                 media_count, file_size, download_time, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 media_count, file_size, download_time, source_type, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 record.user_id, record.url, record.title, record.author,
                 record.download_status, record.markdown_file, record.media_count,
-                record.file_size, record.download_time, datetime.utcnow(), datetime.utcnow()
+                record.file_size, record.download_time, record.source_type, datetime.utcnow(), datetime.utcnow()
             ))
             
             conn.commit()
