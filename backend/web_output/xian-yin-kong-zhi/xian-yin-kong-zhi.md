@@ -1,0 +1,144 @@
+# 显隐控制 ✔
+
+**作者**: 未知作者
+**发布日期**: 未知
+**下载时间**: 2026-03-09 00:22:29
+**媒体资源数量**: 7
+
+---
+
+
+
+- 前端权限
+- [表单权限](/category/表单权限)
+- 显隐控制 ✔
+
+本页总览
+
+# 显隐控制 ✔
+
+> 实现表单的显示隐藏
+
+## BasicForm表单[​](#basicform表单 "BasicForm表单的直接链接")
+
+### 一、用法：[​](#一用法 "一、用法：的直接链接")
+
+```
+import { usePermission } from '/@/hooks/web/usePermission';  
+const { hasPermission } = usePermission();
+```
+
+hasPermission 函数接收后台权限编码,可传递数组hasPermission (['user:add'])
+
+### BaseForm中使用方式[​](#baseform中使用方式 "BaseForm中使用方式的直接链接")
+
+#### show方式控制[​](#show方式控制 "show方式控制的直接链接")
+
+- **通过 [show](https://vvbin.cn/doc-next/components/form.html#formschema) 属性动态判断当前组件是否显示，css 控制，不会删除 dom**
+
+```
+{  
+  field: 'field1',  
+  component: 'Input',  
+  label: '字段1',  
+  show: ({ values }) => {  
+    return hasPermission('user:add');  
+  }  
+}
+```
+
+#### ifShow方式控制[​](#ifshow方式控制 "ifShow方式控制的直接链接")
+
+- **通过 [ifShow](https://vvbin.cn/doc-next/components/form.html#formschema) 属性动态判断当前组件是否显示，js 控制，会删除 dom**
+
+```
+{  
+  field: 'field2',  
+  component: 'Input',  
+  label: '字段2',  
+  ifShow: ({ values }) => {  
+     return hasPermission('user:add');  
+  }  
+}
+```
+
+#### v-auth（通过权限控制显隐)[​](#v-auth通过权限控制显隐 "v-auth（通过权限控制显隐)的直接链接")
+
+`demo:order:auth 标识来源于系统菜单创建的按钮。然后通过角色授权控制该表单项在哪些角色下可见。v3.6.4+`
+
+```
+{  
+    field: 'orderAuth',  
+    component: 'Input',  
+    label: '指令权限',  
+    helpMessage: ['有权限右侧的"选中值"可见，否则不可见'],  
+    colProps: {  
+      span: 12,  
+    },  
+  },  
+  {  
+    field: 'orderAuth',  
+    auth: 'demo:order:auth',  
+    component: 'JEllipsis',  
+    label: '选中值',  
+    colProps: { span: 12 },  
+  },
+```
+
+#### 插槽中使用方式[​](#插槽中使用方式 "插槽中使用方式的直接链接")
+
+```
+<template #jSelectUser="{model, field }">  
+    <JSelectUser v-model:value="model[field]" v-if="hasPermission('user:add')"/>  
+</template>
+```
+
+### 二、权限配置：[​](#二权限配置 "二、权限配置：的直接链接")
+
+#### 1.配置按钮/权限[​](#1配置按钮权限 "1.配置按钮/权限的直接链接")
+
+![](image_003.png)
+
+#### 2.角色授权[​](#2角色授权 "2.角色授权的直接链接")
+
+![](image_004.png)
+
+### 三、使用说明[​](#三使用说明 "三、使用说明的直接链接")
+
+1. `hasPermission('user:add')` 指令值“name”为授权标识，可对该授权标识进行“显示/访问”控制
+2. 权限编码在【系统管理--菜单管理】中配置，添加按钮类型的菜单数据，授权标识配置值`user:add`，策略选择显示/访问，状态选择有效
+
+##### 控制规则：[​](#控制规则 "控制规则：的直接链接")
+
+- 使用`hasPermission`后，菜单权限中若没有对应指令编码的配置，则不显示控件
+- 策略：显示/访问，未授权时不显示，授权后显示
+- 灵活： 一个授权标识码，可以控制多个控件，也可用于列表列字段的控制（请灵活使用）
+
+### 四、页面效果[​](#四页面效果 "四、页面效果的直接链接")
+
+未配置角色权限
+
+![](data:image/png;base64,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)
+
+配置角色权限
+
+![](image_006.png)
+
+## 原生表单[​](#原生表单 "原生表单的直接链接")
+
+使用`v-auth`指令和`isDisabledAuth()`函数
+
+### 示例：[​](#示例 "示例：的直接链接")
+
+1、控制字段的显示与隐藏
+
+![](image_007.png)
+
+2、控制字段的禁用
+
+![](image_008.png)
+
+3、特殊情况处理
+如果给必填字段设置隐藏权限，将会导致字段隐藏了，但是校验还存在的问题，造成该问题的原因是表单的渲染顺序导致的。
+
+方案：想要解决该问题，就不能仅仅使用 `v-auth` 的形式来控制表单了，还需要通过编码的方式，动态给该表单的必填校验设置为false，将rules设置成computed计算属性可以获得更好的性能。

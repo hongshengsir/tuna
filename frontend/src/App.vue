@@ -4,14 +4,18 @@
       <a-layout-header style="background: #fff; padding: 0 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1)">
         <div style="display: flex; align-items: center; justify-content: space-between; height: 64px">
           <h1 style="margin: 0; color: #1890ff; font-size: 24px">
-            🐟 微信文章下载工具
+            🐟 文章下载工具
           </h1>
           
           <div style="display: flex; align-items: center; gap: 24px">
             <a-menu v-model:selectedKeys="currentRoute" mode="horizontal" style="border: none">
               <a-menu-item key="/" @click="navigateTo('/')">
                 <template #icon><DownloadOutlined /></template>
-                文章下载
+                微信文章下载
+              </a-menu-item>
+              <a-menu-item key="/web" @click="navigateTo('/web')">
+                <template #icon><GlobalOutlined /></template>
+                网页文章下载
               </a-menu-item>
               <a-menu-item key="/markdown" @click="navigateTo('/markdown')">
                 <template #icon><FileTextOutlined /></template>
@@ -60,7 +64,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { DownloadOutlined, FileTextOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, FileTextOutlined, UserOutlined, GlobalOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()

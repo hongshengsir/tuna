@@ -1261,7 +1261,7 @@ def is_valid_web_url(url):
     return any(re.match(pattern, url, re.IGNORECASE) for pattern in web_patterns)
 
 
-@app.route('/api/web/download/single', methods=['POST'])
+@app.route('/api/web/download/single', methods=['POST'], endpoint='download_web_single')
 @record_feature("网页文章下载", "下载任意网页的文章内容")
 def download_web_single():
     """单个网页文章下载接口"""
@@ -1336,7 +1336,7 @@ def download_web_single():
         }), 500
 
 
-@app.route('/api/web/download/batch', methods=['POST'])
+@app.route('/api/web/download/batch', methods=['POST'], endpoint='download_web_batch')
 @record_feature("网页文章批量下载", "批量下载多个网页的文章内容")
 def download_web_batch():
     """批量网页文章下载接口"""

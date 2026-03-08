@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import WechatDownloader from '@/components/WechatDownloader.vue'
+import WebArticleDownloader from '@/components/WebArticleDownloader.vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
 import UserLogin from '@/components/UserLogin.vue'
 import UserManagement from '@/components/UserManagement.vue'
@@ -10,6 +11,11 @@ const routes = [
     path: '/',
     name: 'WechatDownloader',
     component: WechatDownloader
+  },
+  {
+    path: '/web',
+    name: 'WebArticleDownloader',
+    component: WebArticleDownloader
   },
   {
     path: '/markdown',

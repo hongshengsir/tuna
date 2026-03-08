@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 // API配置
 const API_BASE_URL = 'http://localhost:5000/api'
@@ -17,9 +17,15 @@ export interface DownloadTask {
 }
 
 export const useDownloadStore = defineStore('download', () => {
+  // 微信文章下载任务
   const tasks = ref<DownloadTask[]>([])
   const isBatchDownloading = ref(false)
   const batchProgress = ref(0)
+  
+  // 网页文章下载任务
+  const webTasks = ref<DownloadTask[]>([])
+  const isWebBatchDownloading = ref(false)
+  const webBatchProgress = ref(0)
 
   // API调用函数
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
@@ -314,7 +320,144 @@ export const useDownloadStore = defineStore('download', () => {
     }
   }
 
+  // ===========================================================================
+  // 网页文章下载相关方法
+  // ===========================================================================
+
+  // 添加网页下载任务
+  const addWebTasks = (urls: string[]) => {
+    urls.forEach(url => {
+      const task: DownloadTask = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        url: url.trim(),
+        status: 'pending',
+        progress: 0
+      }
+      webTasks.value.push(task)
+    })
+  }
+
+  // 更新网页任务状态
+  const updateWebTaskStatus = (id: string, status: DownloadTask['status'], result?: any, errorMessage?: string) => {
+    const task = webTasks.value.find(t => t.id === id)
+    if (task) {
+      task.status = status
+      if (status === 'downloading' && !task.startTime) {
+        task.startTime = new Date()
+      }
+      if (status === 'completed' || status === 'error') {
+        task.endTime = new Date()
+        task.progress = 100
+      }
+      if (errorMessage) {
+        task.errorMessage = errorMessage
+      }
+      if (result) {
+        task.result = result
+        if (result.markdown_file) {
+          const filePath = result.markdown_file
+          task.fileName = filePath.split('/').pop() || 'article.md'
+        }
+      }
+    }
+  }
+
+  // 删除网页任务
+  const removeWebTask = (id: string) => {
+    const index = webTasks.value.findIndex(t => t.id === id)
+    if (index !== -1) {
+      webTasks.value.splice(index, 1)
+    }
+  }
+
+  // 清空所有网页任务
+  const clearWebTasks = () => {
+    webTasks.value = []
+  }
+
+  // 清除已完成的网页任务
+  const clearWebCompletedTasks = () => {
+    webTasks.value = webTasks.value.filter(task => task.status !== 'completed' && task.status !== 'error')
+  }
+
+  // 获取网页任务
+  const getWebTaskById = (id: string) => {
+    return webTasks.value.find(t => t.id === id)
+  }
+
+  // 获取待下载的网页任务
+  const getWebPendingTasks = () => {
+    return webTasks.value.filter(task => task.status === 'pending')
+  }
+
+  // 获取下载中的网页任务
+  const getWebDownloadingTasks = () => {
+    return webTasks.value.filter(task => task.status === 'downloading')
+  }
+
+  // 获取已完成的网页任务
+  const getWebCompletedTasks = () => {
+    return webTasks.value.filter(task => task.status === 'completed')
+  }
+
+  // 获取错误的网页任务
+  const getWebErrorTasks = () => {
+    return webTasks.value.filter(task => task.status === 'error')
+  }
+
+  // 更新网页批量下载进度
+  const updateWebBatchProgress = (batchData: any) => {
+    webBatchProgress.value = Math.round((batchData.completed / batchData.total) * 100)
+  }
+
+  // 从批量任务更新网页任务状态
+  const updateWebTasksFromBatch = (batchTasks: any[]) => {
+    batchTasks.forEach(apiTask => {
+      const taskId = apiTask.task_id
+      const task = webTasks.value.find(t => t.apiTaskId === taskId)
+      if (task) {
+        task.status = apiTask.status
+        task.progress = apiTask.progress
+        if (apiTask.status === 'error') {
+          task.errorMessage = apiTask.error_message
+        }
+        if (apiTask.status === 'completed' && apiTask.result) {
+          task.result = apiTask.result
+          if (apiTask.result.markdown_file) {
+            const filePath = apiTask.result.markdown_file
+            task.fileName = filePath.split('/').pop() || 'article.md'
+          }
+        }
+      }
+    })
+  }
+
+  // 加载网页任务（从本地存储）
+  const loadWebTasks = () => {
+    try {
+      const saved = localStorage.getItem('web_download_tasks')
+      if (saved) {
+        webTasks.value = JSON.parse(saved)
+      }
+    } catch (error) {
+      console.error('加载网页任务失败:', error)
+    }
+  }
+
+  // 保存网页任务到本地存储
+  const saveWebTasks = () => {
+    try {
+      localStorage.setItem('web_download_tasks', JSON.stringify(webTasks.value))
+    } catch (error) {
+      console.error('保存网页任务失败:', error)
+    }
+  }
+
+  // 监听网页任务变化，自动保存
+  watch(webTasks, saveWebTasks, { deep: true })
+
   return {
+    // 微信文章下载相关
     tasks,
     isBatchDownloading,
     batchProgress,
@@ -334,6 +477,24 @@ export const useDownloadStore = defineStore('download', () => {
     checkTaskStatus,
     healthCheck,
     downloadDirectoryZip,
-    downloadBatchZip
+    downloadBatchZip,
+    
+    // 网页文章下载相关
+    webTasks,
+    isWebBatchDownloading,
+    webBatchProgress,
+    addWebTasks,
+    updateWebTaskStatus,
+    removeWebTask,
+    clearWebTasks,
+    clearWebCompletedTasks,
+    getWebTaskById,
+    getWebPendingTasks,
+    getWebDownloadingTasks,
+    getWebCompletedTasks,
+    getWebErrorTasks,
+    updateWebBatchProgress,
+    updateWebTasksFromBatch,
+    loadWebTasks
   }
 })
